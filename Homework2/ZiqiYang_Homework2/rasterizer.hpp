@@ -74,6 +74,8 @@ namespace rst
 
         std::vector<Eigen::Vector3f>& frame_buffer() { return frame_buf; }
 
+        bool usingMSAA{ true };
+
     private:
         void draw_line(Eigen::Vector3f begin, Eigen::Vector3f end);
 
@@ -91,9 +93,10 @@ namespace rst
         std::map<int, std::vector<Eigen::Vector3f>> col_buf;
 
         std::vector<Eigen::Vector3f> frame_buf;
-
+        std::vector<Eigen::Vector3f> color_buf; // for MSAA
         std::vector<float> depth_buf;
         int get_index(int x, int y);
+        int get_index_msaa(int x, int y);
 
         int width, height;
 

@@ -129,7 +129,6 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
     float bbtop = std::floor(std::min(v[0][1], std::min(v[1][1], v[2][1])));
     float bbbottom = std::floor(std::max(v[0][1], std::max(v[1][1], v[2][1])));
 
-    bool usingMSAA = true;
 
     if (usingMSAA)
     {
@@ -141,12 +140,15 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
             {0.25,0.75}, // left-bottom
             {0.75,0.75}  // right-bottom
         };
+
         for (int i = bbleft; i <= bbright; ++i)
         {
             for (int j = bbtop; j <= bbbottom; ++j)
             {
                 int count = 0;
-                float minDepth = INFINITY;
+                int ind = get_index(i, j);
+                frame_buf[ind] = { 0,0,0 };
+
                 for (int MSAA_4 = 0; MSAA_4 < 4; ++MSAA_4)
                 {
                     if (insideTriangle(i + pos[MSAA_4][0], j + pos[MSAA_4][1], t.v))
@@ -156,18 +158,14 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
                         float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
                         z_interpolated *= w_reciprocal;
 
-                        minDepth = std::min(minDepth, z_interpolated);
-                        ++count;
+                        if (depth_buf[get_index_msaa((i + pos[MSAA_4][0] - 0.25) * 2, (j + pos[MSAA_4][1] - 0.25) * 2)] > z_interpolated) {
+                            depth_buf[get_index_msaa((i + pos[MSAA_4][0] - 0.25) * 2, (j + pos[MSAA_4][1] - 0.25) * 2)] = z_interpolated;//update depth
+                            color_buf[get_index_msaa((i + pos[MSAA_4][0] - 0.25) * 2, (j + pos[MSAA_4][1] - 0.25) * 2)] = t.getColor();
+                            count++;
+                        }
                     }
-                }
-                if (count != 0)
-                {
-                    // here need to use the minDepth from MSAA to avoid abnormal case (empty line)
-                    if (depth_buf[get_index(i, j)] > minDepth)
-                    {
-                        depth_buf[get_index(i, j)] = minDepth;//update depth
-                        set_pixel({ static_cast<float>(i),static_cast<float>(j),minDepth }, t.getColor() * (count / 4.0));//blurring color
-                    }
+                    // recalculate the avg color from the MSAA color_buf maintained
+                    frame_buf[ind] += color_buf[get_index_msaa((i + pos[MSAA_4][0] - 0.25) * 2, (j + pos[MSAA_4][1] - 0.25) * 2)] / 4;
                 }
             }
         }
@@ -217,16 +215,22 @@ void rst::rasterizer::clear(rst::Buffers buff)
     if ((buff & rst::Buffers::Color) == rst::Buffers::Color)
     {
         std::fill(frame_buf.begin(), frame_buf.end(), Eigen::Vector3f{ 0, 0, 0 });
+        std::fill(color_buf.begin(), color_buf.end(), Eigen::Vector3f{ 0, 0, 0 });
     }
     if ((buff & rst::Buffers::Depth) == rst::Buffers::Depth)
     {
         std::fill(depth_buf.begin(), depth_buf.end(), std::numeric_limits<float>::infinity());
     }
 }
-
 rst::rasterizer::rasterizer(int w, int h) : width(w), height(h)
 {
     frame_buf.resize(w * h);
+
+    if (usingMSAA) { // check if use MSAA
+        w = w * 4 + 100;
+    }
+
+    color_buf.resize(w * h);
     depth_buf.resize(w * h);
 }
 
@@ -235,12 +239,18 @@ int rst::rasterizer::get_index(int x, int y)
     return (height - 1 - y) * width + x;
 }
 
+int rst::rasterizer::get_index_msaa(int x, int y)
+{
+    return (height * 2 - 1 - y) * width * 2 + x;
+}
+
+
 void rst::rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vector3f& color)
 {
     //old index: auto ind = point.y() + point.x() * width;
     auto ind = (height - 1 - point.y()) * width + point.x();
     frame_buf[ind] = color;
-
 }
 
 // clang-format on
+

@@ -152,6 +152,10 @@ int main(int argc, const char** argv)
         key = cv::waitKey(10);
 
         std::cout << "frame count: " << frame_count++ << '\n';
+
+        if (key = 'a') {
+            r.usingMSAA = !r.usingMSAA;
+        }
     }
 
     return 0;
